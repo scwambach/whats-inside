@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const config = { path: "/api/*" };
 
@@ -7,7 +7,10 @@ const COOKIE = "wi_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 365;
 const MAX_ITEMS = 1000;
 
+const ORDER_KEY = "order";
+
 const store = () => getStore({ name: "bins", consistency: "strong" });
+const binKey = (id) => `bin/${id}`;
 
 export default async (req) => {
   const { pathname } = new URL(req.url);
@@ -27,13 +30,13 @@ export default async (req) => {
       if (!id) {
         if (method === "GET") return json(await listBins());
         if (method === "POST") return requireAdmin(req, () => createBin(req));
+      } else if (id === "reorder") {
+        if (method === "POST") return requireAdmin(req, () => reorderBins(req));
       } else {
-        const number = parseNumber(id);
-        if (!number) return json({ error: "Invalid bin number" }, 400);
         // A missing bin is null rather than a 404, which Netlify may answer with a static-file fallback.
-        if (method === "GET") return json((await store().get(String(number), { type: "json" })) ?? null);
-        if (method === "PUT") return requireAdmin(req, () => updateBin(req, number));
-        if (method === "DELETE") return requireAdmin(req, () => deleteBin(number));
+        if (method === "GET") return json(await findBin(id));
+        if (method === "PUT") return requireAdmin(req, () => updateBin(req, id));
+        if (method === "DELETE") return requireAdmin(req, () => deleteBin(id));
       }
     }
 
@@ -45,50 +48,97 @@ export default async (req) => {
 };
 
 // ---- Bins ----
+//
+// Each bin is stored under a permanent id ("bin/<id>"), which is what QR codes link to.
+// The "order" key lists the ids; a bin's number is just its position (1, 2, 3, …).
 
-async function listBins() {
+async function loadState() {
   const s = store();
+  const order = (await s.get(ORDER_KEY, { type: "json" })) ?? (await migrateNumberedBins(s));
+  const records = await Promise.all(order.map((id) => s.get(binKey(id), { type: "json" })));
+  const bins = records.filter(Boolean).map((bin, i) => ({ ...bin, number: i + 1 }));
+  return { order: bins.map((b) => b.id), bins };
+}
+
+// Bins created before ids existed were stored under their number ("1", "2", …).
+async function migrateNumberedBins(s) {
   const { blobs } = await s.list();
-  const bins = await Promise.all(blobs.map((b) => s.get(b.key, { type: "json" })));
-  return bins.filter(Boolean).sort((a, b) => a.number - b.number);
+  const keys = blobs.map((b) => b.key).filter((k) => /^\d+$/.test(k)).sort((a, b) => a - b);
+  const order = [];
+  for (const key of keys) {
+    const old = await s.get(key, { type: "json" });
+    if (!old) continue;
+    const { number, ...bin } = old;
+    // Derived from the old data, so two requests migrating at once produce the same ids.
+    bin.id = "m" + createHash("sha256").update(`${key}:${old.createdAt}`).digest("hex").slice(0, 9);
+    await s.setJSON(binKey(bin.id), bin);
+    order.push(bin.id);
+  }
+  await s.setJSON(ORDER_KEY, order);
+  await Promise.all(keys.map((k) => s.delete(k)));
+  return order;
+}
+
+function newId() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  for (;;) {
+    const id = [...randomBytes(8)].map((b) => alphabet[b % alphabet.length]).join("");
+    if (/[a-z]/.test(id)) return id; // never all digits, so it can't be mistaken for a number
+  }
+}
+
+const listBins = async () => (await loadState()).bins;
+
+// Looks a bin up by id, or by number (for links like /bin/3).
+async function findBin(ref) {
+  const { bins } = await loadState();
+  if (/^\d+$/.test(ref)) return bins[Number(ref) - 1] ?? null;
+  return bins.find((b) => b.id === ref) ?? null;
 }
 
 async function createBin(req) {
   const body = await readBody(req);
   if (!body) return json({ error: "Invalid request body" }, 400);
 
-  const all = await listBins();
-  let number;
-  if (body.number != null && body.number !== "") {
-    number = parseNumber(String(body.number));
-    if (!number) return json({ error: "Bin number must be a positive whole number" }, 400);
-    if (all.some((b) => b.number === number)) {
-      return json({ error: `Bin ${number} already exists` }, 409);
-    }
-  } else {
-    number = all.reduce((max, b) => Math.max(max, b.number), 0) + 1;
-  }
-
+  // New bins always go at the end; drag-to-reorder handles placement.
+  const { order } = await loadState();
   const now = new Date().toISOString();
-  const bin = { number, ...cleanBin(body), createdAt: now, updatedAt: now };
-  await store().setJSON(String(number), bin);
-  return json(bin, 201);
+  const bin = { id: newId(), ...cleanBin(body), createdAt: now, updatedAt: now };
+  const s = store();
+  await s.setJSON(binKey(bin.id), bin);
+  await s.setJSON(ORDER_KEY, [...order, bin.id]);
+  return json({ ...bin, number: order.length + 1 }, 201);
 }
 
-async function updateBin(req, number) {
+async function updateBin(req, id) {
   const body = await readBody(req);
   if (!body) return json({ error: "Invalid request body" }, 400);
 
-  const existing = await store().get(String(number), { type: "json" });
-  if (!existing) return json({ error: `Bin ${number} doesn't exist` }, 404);
+  const existing = (await listBins()).find((b) => b.id === id);
+  if (!existing) return json({ error: "That bin doesn't exist" }, 404);
 
-  const bin = { ...existing, ...cleanBin(body), number, updatedAt: new Date().toISOString() };
-  await store().setJSON(String(number), bin);
-  return json(bin);
+  const { number, ...rest } = existing;
+  const bin = { ...rest, ...cleanBin(body), updatedAt: new Date().toISOString() };
+  await store().setJSON(binKey(id), bin);
+  return json({ ...bin, number });
 }
 
-async function deleteBin(number) {
-  await store().delete(String(number));
+async function reorderBins(req) {
+  const body = await readBody(req);
+  const next = Array.isArray(body?.order) ? body.order.map(String) : [];
+  const { order } = await loadState();
+  const valid = next.length === order.length && new Set(next).size === next.length && next.every((id) => order.includes(id));
+  if (!valid) return json({ error: "Bins changed since this page loaded. Reload and try again." }, 409);
+
+  await store().setJSON(ORDER_KEY, next);
+  return json(await listBins());
+}
+
+async function deleteBin(id) {
+  const { order } = await loadState();
+  const s = store();
+  await s.setJSON(ORDER_KEY, order.filter((x) => x !== id));
+  await s.delete(binKey(id));
   return json({ ok: true });
 }
 
@@ -103,12 +153,6 @@ function cleanBin(body) {
 function text(value, max) {
   if (typeof value !== "string" && typeof value !== "number") return "";
   return String(value).trim().slice(0, max);
-}
-
-function parseNumber(value) {
-  if (!/^\d{1,6}$/.test(value)) return null;
-  const n = Number(value);
-  return n > 0 ? n : null;
 }
 
 // ---- Auth ----

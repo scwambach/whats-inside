@@ -7,8 +7,7 @@ showNames.addEventListener("change", () => sheet.classList.toggle("hide-names", 
 load();
 
 async function load() {
-  const wanted = (new URLSearchParams(location.search).get("bins") || "")
-    .split(",").map(Number).filter((n) => n > 0);
+  const wanted = (new URLSearchParams(location.search).get("bins") || "").split(",").filter(Boolean);
 
   let bins, session;
   try {
@@ -20,7 +19,7 @@ async function load() {
 
   // Codes always point at the main site URL, even when printing from a preview deploy.
   const base = (session.siteUrl || location.origin).replace(/\/$/, "");
-  const list = wanted.length ? bins.filter((b) => wanted.includes(b.number)) : bins;
+  const list = wanted.length ? bins.filter((b) => wanted.includes(b.id)) : bins;
 
   if (!list.length) {
     summary.textContent = "No bins to print.";
@@ -32,7 +31,7 @@ async function load() {
   sheet.innerHTML = list.map((bin) => `
     <div class="label">
       <div class="num">${bin.number}</div>
-      <div class="qr">${qrSvg(`${base}/bin/${bin.number}`)}</div>
+      <div class="qr">${qrSvg(`${base}/bin/${bin.id}`)}</div>
       <div class="lname">${esc(bin.name)}</div>
     </div>`).join("");
 }

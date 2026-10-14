@@ -81,7 +81,7 @@ function render() {
     ? `${itemTotal} matching item${itemTotal === 1 ? "" : "s"} in ${binText}`
     : `${binText} match${groups.size === 1 ? "es" : ""}`;
   resultsEl.innerHTML = [...groups.values()].map(({ bin, items }) => `
-    <a class="card" href="/bin/${bin.number}">
+    <a class="card" href="/bin/${bin.id}">
       ${binHead(bin)}
       ${items.length
         ? `<ul class="items">${items.map(({ item, matches }) => itemLi(item, matches)).join("")}</ul>`
@@ -98,7 +98,7 @@ function renderAll() {
   const total = bins.reduce((n, b) => n + b.items.length, 0);
   statusEl.textContent = `${bins.length} bin${bins.length === 1 ? "" : "s"} · ${total} item${total === 1 ? "" : "s"}`;
   resultsEl.innerHTML = bins.map((bin) => `
-    <a class="card" href="/bin/${bin.number}">
+    <a class="card" href="/bin/${bin.id}">
       ${binHead(bin)}
       <div class="muted small">${itemCount(bin)}</div>
     </a>`).join("");

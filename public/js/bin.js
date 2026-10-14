@@ -1,10 +1,11 @@
 const root = document.getElementById("bin");
-const number = Number(location.pathname.split("/").filter(Boolean)[1]);
+// The QR code links by permanent id; /bin/3 also works and means "whatever bin is #3 now".
+const ref = location.pathname.split("/").filter(Boolean)[1] || "";
 
 load();
 
 async function load() {
-  if (!number) {
+  if (!/^[a-z0-9]+$/.test(ref)) {
     root.innerHTML = `<h1>Bin not found</h1><p><a href="/">Search all bins</a></p>`;
     return;
   }
@@ -12,18 +13,18 @@ async function load() {
   let bin, session;
   try {
     [bin, session] = await Promise.all([
-      api(`/api/bins/${number}`),
+      api(`/api/bins/${ref}`),
       api("/api/session").catch(() => ({ admin: false })),
     ]);
   } catch (err) {
-    root.innerHTML = `<h1>Bin ${number}</h1><p class="error">${esc(err.message)}</p>`;
+    root.innerHTML = `<h1>Bin</h1><p class="error">${esc(err.message)}</p>`;
     return;
   }
   if (!bin) {
     root.innerHTML = `
-      <h1>Bin ${number}</h1>
-      <p class="muted">This bin hasn't been set up yet.</p>
-      <p><a class="btn primary" href="/admin#/new?number=${number}">Set up bin ${number}</a></p>`;
+      <h1>Bin not found</h1>
+      <p class="muted">This bin may have been deleted.</p>
+      <p><a class="btn primary" href="/">Search all bins</a></p>`;
     return;
   }
 
@@ -45,6 +46,6 @@ async function load() {
       : `<p class="card muted">This bin is empty.</p>`}
     <div class="meta muted small">
       <span>${itemCount(bin)} · updated ${esc(updated)}</span>
-      ${session.admin ? `<a class="btn" href="/admin#/bin/${bin.number}">Edit bin</a>` : ""}
+      ${session.admin ? `<a class="btn" href="/admin#/bin/${bin.id}">Edit bin</a>` : ""}
     </div>`;
 }
