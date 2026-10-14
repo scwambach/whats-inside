@@ -3,11 +3,11 @@
 Printable QR labels for storage bins. Scan a bin's label with your phone camera to see what's in it; edit contents from the admin page.
 
 - `/` — fuzzy search across every bin and item
-- `/bin/<id>` — what's in a bin (this is what the QR code opens); `/bin/3` also works and shows whatever bin is #3 now
+- `/bin/<id>` — what's in a bin (this is what the QR code opens); `/bin/3` also works and shows bin number 3
 - `/admin` — password-protected: create, edit, delete and drag-to-reorder bins, select bins to print
 - `/print` — printable sheet of 2"×2" QR labels, 9 per letter page
 
-Bin numbers are just positions in the list (1, 2, 3, …). New bins go at the end; dragging or deleting renumbers the rest. QR codes link to each bin's permanent id, so a label always opens the right bin even after its number changes; only the printed number goes out of date.
+Each bin has a saved number you can edit (new bins default to one past the highest; no two bins can share a number). Dragging in the admin list only changes the order bins are listed in. QR codes link to each bin's permanent id, so a label keeps opening the right bin even if you change its number.
 
 Plain HTML/CSS/JS, one Netlify Function (`netlify/functions/api.mjs`) and [Netlify Blobs](https://docs.netlify.com/build/data-and-storage/netlify-blobs/) for storage. No build step.
 

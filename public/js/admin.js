@@ -1,6 +1,6 @@
 const app = document.getElementById("app");
 
-// Bins arrive in order; each has a permanent `id` and a `number` that is just its position.
+// Bins arrive in list order; each has a permanent `id` and a saved, editable `number`.
 let bins = [];
 const selected = new Set(); // bin ids
 let filter = "";
@@ -296,7 +296,7 @@ async function saveOrder(order, { focusIndex = null, undo = false } = {}) {
   const refocus = () => focusIndex != null && app.querySelectorAll("#list .handle")[focusIndex]?.focus();
 
   // Show the result immediately; the server confirms it below.
-  bins = order.map((id, i) => ({ ...byId.get(id), number: i + 1 }));
+  bins = order.map((id) => byId.get(id));
   lastMove = undo ? null : { order: previous.bins.map((b) => b.id) };
   savingOrder = true;
   renderList();
@@ -341,15 +341,15 @@ function showOrderStatus(state) {
 function showEditor(bin) {
   const isNew = !bin;
   draft = isNew
-    ? { number: bins.length + 1, name: "", location: "", items: [] }
+    ? { number: bins.reduce((max, b) => Math.max(max, b.number), 0) + 1, name: "", location: "", items: [] }
     : structuredClone(bin);
   document.title = `${isNew ? "New bin" : `Bin ${bin.number}`} · Admin`;
 
   app.innerHTML = `
     <form class="editor" novalidate>
-      <h1><span class="bin-num">${draft.number}</span> ${isNew ? "New bin" : "Edit bin"}</h1>
-      ${isNew ? `<p class="muted small">New bins go at the end of the list. Drag it in the list to move it.</p>` : ""}
-      <div class="grid">
+      <h1><span class="bin-num" id="number-badge">${draft.number}</span> ${isNew ? "New bin" : "Edit bin"}</h1>
+      <div class="grid numbered">
+        <label class="field">Number <input type="number" name="number" min="1" step="1" inputmode="numeric" value="${esc(draft.number)}"></label>
         <label class="field">Name <input type="text" name="name" value="${esc(draft.name)}" placeholder="e.g. Christmas lights"></label>
         <label class="field">Location <input type="text" name="location" value="${esc(draft.location)}" placeholder="e.g. Garage, top shelf"></label>
       </div>
@@ -385,8 +385,9 @@ function showEditor(bin) {
     const row = e.target.closest(".item-row");
     if (row) {
       draft.items[Number(row.dataset.i)][e.target.dataset.field] = e.target.value;
-    } else if (["name", "location"].includes(e.target.name)) {
+    } else if (["number", "name", "location"].includes(e.target.name)) {
       draft[e.target.name] = e.target.value;
+      if (e.target.name === "number") form.querySelector("#number-badge").textContent = e.target.value || "?";
     }
   });
 
@@ -432,9 +433,7 @@ function showEditor(bin) {
   });
 
   form.querySelector("#delete")?.addEventListener("click", async () => {
-    const later = bins.length - bin.number;
-    if (!confirm(`Delete bin ${bin.number} and its ${itemCount(bin)}?` +
-      (later ? ` The ${later} bin${later === 1 ? "" : "s"} after it will move up one number.` : ""))) return;
+    if (!confirm(`Delete bin ${bin.number} and its ${itemCount(bin)}? Its printed label will stop working.`)) return;
     try {
       await api(`/api/bins/${bin.id}`, { method: "DELETE" });
       selected.delete(bin.id);
@@ -449,7 +448,7 @@ function showEditor(bin) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const items = draft.items.filter((i) => i.name.trim());
-    const body = { name: draft.name, location: draft.location, items };
+    const body = { number: draft.number, name: draft.name, location: draft.location, items };
     const saveButton = form.querySelector("[type=submit]");
     saveButton.disabled = true;
     try {
