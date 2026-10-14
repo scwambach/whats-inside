@@ -1,0 +1,11 @@
+{
+  "name": "whats-inside",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx netlify-cli dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.4"
+  }
+}

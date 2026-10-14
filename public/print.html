@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Print labels · What's Inside</title>
+  <link rel="icon" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=Black+Ops+One&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    @page { size: letter; margin: 0.4in; }
+
+    .sheet {
+      display: flex;
+      flex-wrap: wrap;
+      width: 7.5in;
+      margin: 20px auto;
+      background: #fff;
+      color: #000;
+      box-shadow: 0 0 0 3px #000, 0 6px 0 3px #000;
+    }
+    .label {
+      width: 2.5in;
+      height: 3.2in;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed #bbb;
+      margin: 0 -1px -1px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      overflow: hidden;
+    }
+    .label .num {
+      font: 0.62in/1 "Black Ops One", Impact, sans-serif;
+      margin-bottom: 0.06in;
+    }
+    .label .qr svg { display: block; width: 2in; height: 2in; }
+    .label .lname {
+      font: 700 12pt/1.2 "Barlow Condensed", "Arial Narrow", sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      max-width: 2.3in;
+      margin-top: 0.04in;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hide-names .lname { display: none; }
+
+    .controls { max-width: calc(7.5in + 32px); margin: 0 auto; padding: 16px 16px 0; }
+
+    @media screen and (max-width: 8in) {
+      .sheet { width: 100%; justify-content: center; }
+    }
+    @media print {
+      body { background: #fff; }
+      .topbar, .controls { display: none !important; }
+      .sheet { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">What's Inside</a>
+    <a href="/admin">Admin</a>
+  </header>
+  <div class="controls wrap">
+    <div class="toolbar">
+      <button class="btn primary" onclick="document.fonts.ready.then(() => window.print())">Print</button>
+      <label class="small"><input type="checkbox" id="show-names" checked> Show bin name under code</label>
+    </div>
+    <p class="muted small" id="summary">Loading…</p>
+  </div>
+  <div class="sheet" id="sheet"></div>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/print.js"></script>
+</body>
+</html>
